@@ -68,6 +68,7 @@ interface AppContextType {
   addParcel: (parcel: FarmParcel) => Promise<void> | void;
   updateParcel: (tagNumber: string, updated: Partial<FarmParcel>) => Promise<void> | void;
   deleteParcel: (tagNumber: string) => void;
+  deleteBulkParcels: (tagNumbers: string[]) => Promise<void>;
   resetParcels: () => void;
   language: Language;
   setLanguage: (lang: Language) => void;
@@ -902,6 +903,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const deleteBulkParcels = async (tagNumbers: string[]) => {
+    if (!tagNumbers || tagNumbers.length === 0) return;
+    setParcels((prev) => prev.filter((p) => !tagNumbers.includes(p.tagNumber)));
+    try {
+      await supabaseDb.deleteBulkFarmRecords(tagNumbers);
+    } catch (err: any) {
+      console.warn('Supabase bulk deletion notice:', err?.message || err);
+    } finally {
+      setOfflineQueueCount(getOfflinePendingFarms().length);
+    }
+  };
+
   const resetParcels = () => {
     setParcels([]);
   };
@@ -1674,6 +1687,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addParcel,
         updateParcel,
         deleteParcel,
+        deleteBulkParcels,
         resetParcels,
         lftAccounts,
         addLftAccount,
