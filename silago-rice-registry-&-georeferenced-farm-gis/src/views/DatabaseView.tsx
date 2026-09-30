@@ -1194,9 +1194,20 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                     >
                       {/* 1. RSBSA NO. (Frozen Left ONLY) */}
                       <td className={`sticky left-0 z-10 ${rowBg} group-hover:bg-slate-100/90 w-[155px] min-w-[155px] max-w-[155px] py-2.5 px-2.5 text-center whitespace-nowrap border-r-2 border-slate-200 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.1)]`}>
-                        <span className="inline-block px-2 py-1 rounded bg-blue-50/90 border border-blue-200 text-blue-900 font-mono text-[11px] font-black tracking-tight">
-                          {parcel.swineNameOrId || 'NO RSBSA'}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-block px-2 py-1 rounded bg-blue-50/90 border border-blue-200 text-blue-900 font-mono text-[11px] font-black tracking-tight">
+                            {parcel.swineNameOrId || 'NO RSBSA'}
+                          </span>
+                          {(parcel.is_pending_sync || parcel.isPendingSync) && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[9px] font-extrabold text-amber-800 bg-amber-100/90 border border-amber-300 px-1.5 py-0.5 rounded-full shadow-2xs animate-pulse"
+                              title="Saved locally offline. Will synchronize to database automatically when internet is available."
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              Offline / Pending Sync
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 2. PROFILE PHOTO */}
