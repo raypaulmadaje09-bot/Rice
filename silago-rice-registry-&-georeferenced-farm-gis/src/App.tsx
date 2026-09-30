@@ -64,7 +64,12 @@ const AppContent: React.FC = () => {
     lftAccounts,
     setSettingsActiveSubTab,
     permissions,
-    realtimeStatus
+    realtimeStatus,
+    offlineQueueCount,
+    isOnline,
+    syncOfflineQueue,
+    syncNotification,
+    setSyncNotification
   } = useApp();
 
   const [isAdminProfileOpen, setIsAdminProfileOpen] = useState(false);
@@ -417,10 +422,32 @@ const AppContent: React.FC = () => {
                     <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 text-[#38bdf8] border border-sky-400/30 uppercase tracking-wider inline-block">
                       {isCentralAdmin ? 'CENTRAL ADMIN' : permissions.isLftOfficer ? 'LFT FIELD OPERATOR' : 'PUBLIC VISITOR'}
                     </span>
-                    <div className="flex items-center gap-1 text-[9.5px] font-bold text-emerald-400" title="Connected to Supabase Realtime">
-                      <span className={`w-1.5 h-1.5 rounded-full ${realtimeStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                      <span>{realtimeStatus === 'connected' ? 'Live Synced' : realtimeStatus}</span>
-                    </div>
+                    {!isOnline ? (
+                      <button
+                        type="button"
+                        onClick={() => syncOfflineQueue()}
+                        className="flex items-center gap-1 text-[9.5px] font-bold text-amber-300 hover:text-amber-200 transition cursor-pointer"
+                        title="Click to attempt synchronization"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        <span>Offline ({offlineQueueCount} record{offlineQueueCount === 1 ? '' : 's'} queued)</span>
+                      </button>
+                    ) : offlineQueueCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => syncOfflineQueue()}
+                        className="flex items-center gap-1 text-[9.5px] font-bold text-sky-300 hover:text-white transition cursor-pointer"
+                        title="Records queued offline. Click to upload now."
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                        <span>Syncing ({offlineQueueCount} queued)</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1 text-[9.5px] font-bold text-emerald-400" title="Connected to Supabase Realtime">
+                        <span className={`w-1.5 h-1.5 rounded-full ${realtimeStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                        <span>{realtimeStatus === 'connected' ? 'Live Synced' : realtimeStatus}</span>
+                      </div>
+                    )}
                   </div>
                   <span className="text-xs font-bold text-white block leading-snug mt-1">
                     Rice Farm Registry &amp; GIS
@@ -846,6 +873,23 @@ const AppContent: React.FC = () => {
         onDismiss={() => setShowSignInToast(false)}
         autoDismissMs={2000}
       />
+
+      {/* Floating Offline Sync Notification Banner */}
+      {syncNotification && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div className="bg-[#0c2340] border-2 border-emerald-500/80 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="text-xs font-semibold text-emerald-100">{syncNotification}</span>
+            <button
+              type="button"
+              onClick={() => setSyncNotification(null)}
+              className="text-slate-400 hover:text-white p-1 ml-1 rounded transition cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating AI Chatbot Assistant (RiceSsistant - Role-restricted to Central Admin & LFT Field Officers) */}
       <AgriGisChatbot
