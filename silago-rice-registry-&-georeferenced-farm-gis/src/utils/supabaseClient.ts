@@ -1185,6 +1185,41 @@ export const supabaseDb = {
   },
 
   /**
+   * Bulk delete farm records from Supabase and broadcast real-time sync event
+   */
+  async deleteBulkFarmRecords(tagNumbers: string[]): Promise<boolean> {
+    if (!tagNumbers || tagNumbers.length === 0) return true;
+    try {
+      tagNumbers.forEach((tag) => removeOfflinePendingFarm(tag));
+
+      try {
+        await supabaseClient.from('rice_farm_records').delete().in('id', tagNumbers);
+      } catch (err) {
+        console.warn('Supabase rice_farm_records bulk delete notice:', err);
+      }
+
+      try {
+        await supabaseClient.from('farms').delete().in('tagNumber', tagNumbers);
+      } catch {}
+
+      const farmerIds = tagNumbers.map((t) => `FARMER-${t}`);
+      try {
+        await supabaseClient.from('farmers').delete().in('id', farmerIds);
+      } catch {}
+
+      for (const tagNumber of tagNumbers) {
+        try {
+          await broadcastRealtimeChange('parcel_delete', { tagNumber });
+        } catch {}
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase bulk delete notice:', e);
+      return false;
+    }
+  },
+
+  /**
    * Alias: deleteParcel
    */
   async deleteParcel(tagNumber: string): Promise<void> {
