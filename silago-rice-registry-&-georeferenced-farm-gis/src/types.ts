@@ -86,6 +86,14 @@ export interface FarmParcel {
   fieldPhotoUrl?: string; // Farm Field Photo
   photo_url?: string; // Supabase database column alias
   field_photo_url?: string; // Supabase database column alias
+  rsbsa_no?: string; // Supabase rice_farm_records column alias
+  residential_address?: string; // Supabase rice_farm_records column alias
+  farm_area_ha?: number; // Supabase rice_farm_records column alias
+  commodity_planted?: string; // Supabase rice_farm_records column alias
+  season?: string; // Supabase rice_farm_records column alias
+  gps_coordinates?: string; // Supabase rice_farm_records column alias
+  is_pending_sync?: boolean; // Offline queue pending sync status
+  isPendingSync?: boolean; // Offline queue pending sync status alias
   seasonalRecords?: SeasonalProductionRecord[]; // Master-Detail: Production records twice a year
 }
 
