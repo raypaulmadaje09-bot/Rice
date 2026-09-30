@@ -9,7 +9,7 @@ import {
 } from '../data/barangays';
 import { useApp } from '../context/AppContext';
 import { calculateCropGrowthStage, CropGrowthStageCalc } from '../data/riceVarieties';
-import { uploadFarmPhoto, supabaseClient, parseFarmerName } from '../utils/supabaseClient';
+import { uploadFarmPhoto, supabaseClient, parseFarmerName, checkDuplicateRsbsa } from '../utils/supabaseClient';
 import { SafeImage } from './SafeImage';
 import { DaLogo, SilagoSeal, BagOngSilagoLogo, OfficialSealsTrio } from './Seals';
 import { ManageReferenceModal, ManageType } from './ManageReferenceModal';
@@ -293,41 +293,29 @@ export const AddParcelModal: React.FC<AddParcelModalProps> = ({
       return;
     }
 
-    // Step B: Query Supabase: supabase.from('farms').select('id, farmer_name, rsbsa_number').eq('rsbsa_number', inputRsbsa)
+    // Check duplicate RSBSA across online DB and offline pending queue
     let isCancelled = false;
     setIsCheckingRsbsa(true);
 
     const timer = setTimeout(async () => {
       try {
-        const { data, error: qError } = await supabaseClient
-          .from('farms')
-          .select('id, farmer_name, rsbsa_number')
-          .eq('rsbsa_number', inputRsbsa);
-
+        const dup = await checkDuplicateRsbsa(inputRsbsa, editingParcel?.tagNumber);
         if (isCancelled) return;
 
-        if (!qError && Array.isArray(data) && data.length > 0) {
-          const match = data.find((row: any) => {
-            if (!editingParcel) return true;
-            const matchTag = row.tag_number || row.tagNumber || row.id;
-            return editingParcel.tagNumber !== matchTag && editingParcel.swineNameOrId !== row.rsbsa_number;
+        if (dup.isDuplicate) {
+          setDuplicateRsbsaMatch({
+            farmerName: dup.farmerName || 'Registered Farmer',
+            rsbsa: inputRsbsa
           });
-
-          if (match) {
-            setDuplicateRsbsaMatch({
-              farmerName: match.farmer_name || (match as any).farmerName || 'Existing Farmer',
-              rsbsa: inputRsbsa
-            });
-            return;
-          }
+        } else {
+          setDuplicateRsbsaMatch(null);
         }
-        setDuplicateRsbsaMatch(null);
       } catch (e) {
         console.warn('Real-time RSBSA duplicate check notice:', e);
       } finally {
         if (!isCancelled) setIsCheckingRsbsa(false);
       }
-    }, 250);
+    }, 200);
 
     return () => {
       isCancelled = true;
@@ -652,23 +640,30 @@ export const AddParcelModal: React.FC<AddParcelModalProps> = ({
         formData.farmerGivenName || ''
       } ${formData.farmerMiddleName || ''}`.trim();
 
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
     const finalParcel: FarmParcel = {
       tagNumber: formData.tagNumber || `SLG-${Date.now().toString().slice(-6)}`,
       swineNameOrId: formData.swineNameOrId || 'NO RSBSA',
+      rsbsa_no: formData.swineNameOrId || 'NO RSBSA',
       farmerFamilyName: formData.farmerFamilyName || '',
       farmerGivenName: formData.farmerGivenName || '',
       farmerMiddleName: formData.farmerMiddleName || '',
       birthday: formData.birthday || '',
+      farmLocation: formData.farmLocation || targetBrgy.toUpperCase(),
       raiserName: finalRaiserName,
       barangay: targetBrgy,
       purok: formData.purok || 'Purok Riverside',
       address: formData.address || 'Silago, Southern Leyte',
+      residential_address: formData.address || `${targetBrgy}, Silago, Southern Leyte`,
       contactNumber: formData.contactNumber || '0917-000-0000',
       breed: formData.breed || 'NSIC Rc 222',
       seedType: formData.seedType || 'INBRED',
       sex: formData.sex || 'Owner-Cultivator',
       ageMonths: Number(phenology.dap) || Number(formData.ageMonths) || 45,
       weightKg: Number(formData.weightKg) || 1.0,
+      areaHa: Number(formData.weightKg) || 1.0,
+      farm_area_ha: Number(formData.weightKg) || 1.0,
       scale:
         Number(formData.weightKg) < 2
           ? 'Smallholder (<2 ha)'
@@ -686,49 +681,40 @@ export const AddParcelModal: React.FC<AddParcelModalProps> = ({
         formData.focalPerson || getAssignedLftForBarangay(targetBrgy).name,
       lat: Number(formData.lat) || 10.5335,
       lng: Number(formData.lng) || 125.162,
+      gps_coordinates: `${Number(formData.lat) || 10.5335}, ${Number(formData.lng) || 125.162}`,
       boundaryCoords: formData.boundaryCoords,
-      syncStatus: 'Live Synced',
+      syncStatus: isOffline ? 'Offline / Pending Sync' : 'Live Synced',
+      is_pending_sync: isOffline,
+      isPendingSync: isOffline,
       targetYieldMt: Number(formData.targetYieldMt) || 6.0,
       plantingDate: formData.plantingDate || '',
       croppingSeason: formData.croppingSeason || 'Wet Season (WS) 2026 (June – Nov 2026)',
+      season: formData.croppingSeason || 'Wet Season (WS) 2026 (June – Nov 2026)',
       commodity: 'Rice',
+      commodity_planted: 'Rice',
       pestAdvisoryNotice: formData.pestAdvisoryNotice || 'Routine monitoring advised.',
       photoUrl: formData.photoUrl,
-      fieldPhotoUrl: formData.fieldPhotoUrl
+      photo_url: formData.photoUrl,
+      fieldPhotoUrl: formData.fieldPhotoUrl,
+      field_photo_url: formData.fieldPhotoUrl
     };
 
     setIsSubmitting(true);
     try {
-      // Pre-query database to catch duplicate RSBSA right before persisting
+      // Strict RSBSA duplicate check against online Supabase and offline queue
       const inputRsbsa = (formData.swineNameOrId || '').trim();
       if (inputRsbsa && inputRsbsa.toUpperCase() !== 'NO RSBSA') {
-        try {
-          const { data: existingRows, error: checkErr } = await supabaseClient
-            .from('farms')
-            .select('id, farmer_name, rsbsa_number')
-            .eq('rsbsa_number', inputRsbsa);
-
-          if (!checkErr && Array.isArray(existingRows) && existingRows.length > 0) {
-            const match = existingRows.find((row: any) => {
-              if (!editingParcel) return true;
-              const matchTag = row.tag_number || row.tagNumber || row.id;
-              return editingParcel.tagNumber !== matchTag && editingParcel.swineNameOrId !== row.rsbsa_number;
-            });
-
-            if (match) {
-              setDuplicateRsbsaMatch({
-                farmerName: match.farmer_name || (match as any).farmerName || 'Existing Farmer',
-                rsbsa: inputRsbsa
-              });
-              setUniqueViolationAlert(
-                'Dili ma-save! Naglungtad na kini nga RSBSA No. sa database. Palihug susiha ang opisyal nga masterlist.'
-              );
-              setIsSubmitting(false);
-              return; // Prevent closing the modal and do not create duplicate rows
-            }
-          }
-        } catch (dbCheckErr) {
-          console.warn('Pre-save database RSBSA check note:', dbCheckErr);
+        const dupCheck = await checkDuplicateRsbsa(inputRsbsa, editingParcel?.tagNumber);
+        if (dupCheck.isDuplicate) {
+          setDuplicateRsbsaMatch({
+            farmerName: dupCheck.farmerName || 'Registered Farmer',
+            rsbsa: inputRsbsa
+          });
+          setUniqueViolationAlert(
+            `Warning: A farmer with RSBSA No. ${inputRsbsa} is already registered in the system (${dupCheck.farmerName || 'Existing Record'}). Duplicate entries are not allowed.`
+          );
+          setIsSubmitting(false);
+          return;
         }
       }
 
@@ -835,6 +821,35 @@ export const AddParcelModal: React.FC<AddParcelModalProps> = ({
                 <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2.5 text-xs text-red-700">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
                   <span>{error}</span>
+                </div>
+              )}
+
+              {/* Warning Modal / Banner on Duplicate RSBSA Validation */}
+              {uniqueViolationAlert && (
+                <div className="p-4 bg-rose-50 border-2 border-rose-400 rounded-2xl flex flex-col sm:flex-row items-start justify-between gap-3 text-xs text-rose-950 shadow-md animate-in slide-in-from-top-2">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-extrabold text-rose-900 text-xs uppercase tracking-wide">
+                        Duplicate RSBSA Number Detected
+                      </h4>
+                      <p className="text-rose-800 mt-0.5 text-xs font-medium leading-relaxed">
+                        {uniqueViolationAlert}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUniqueViolationAlert(null);
+                        setDuplicateRsbsaMatch(null);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-rose-300 hover:bg-rose-100 text-rose-800 font-bold rounded-xl transition cursor-pointer text-xs"
+                    >
+                      Dismiss / Review
+                    </button>
+                  </div>
                 </div>
               )}
 
