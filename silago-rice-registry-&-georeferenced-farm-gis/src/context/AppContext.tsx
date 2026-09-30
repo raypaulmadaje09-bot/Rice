@@ -10,7 +10,9 @@ import {
   normalizeLftAccount,
   sortParcelsAlphabetically,
   supabaseDb,
-  broadcastRealtimeChange
+  broadcastRealtimeChange,
+  getOfflinePendingFarms,
+  syncOfflinePendingFarms
 } from '../utils/supabaseClient';
 import { getUserPermissions, UserPermissions } from '../utils/rbac';
 import { setReportCustomLogoCache } from '../utils/reportExportUtils';
@@ -207,6 +209,11 @@ interface AppContextType {
   realtimeStatus: 'connected' | 'connecting' | 'reconnecting';
   isRealtimeSyncing: boolean;
   syncWithSupabase: () => Promise<void>;
+  offlineQueueCount: number;
+  isOnline: boolean;
+  syncOfflineQueue: () => Promise<void>;
+  syncNotification: string | null;
+  setSyncNotification: (msg: string | null) => void;
 
   // User Session & Auth Loading State
   isLoading: boolean;
@@ -329,6 +336,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // LFT Accounts State (Pure Async Remote Supabase Source of Truth)
   const [lftAccounts, setLftAccounts] = useState<LftAccount[]>([]);
 
+  // Offline state & pending synchronization queue tracker
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [offlineQueueCount, setOfflineQueueCount] = useState<number>(() => getOfflinePendingFarms().length);
+  const [syncNotification, setSyncNotification] = useState<string | null>(null);
+
   // Manual & Automated Trigger to re-sync with Supabase tables directly
   const syncWithSupabase = useCallback(async () => {
     setIsRealtimeSyncing(true);
@@ -350,6 +362,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsRealtimeSyncing(false);
     }
   }, []);
+
+  // Manual & Automated Trigger to sync offline pending queue to Supabase
+  const syncOfflineQueue = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSyncNotification('Offline: Internet connection is not available yet.');
+      setTimeout(() => setSyncNotification(null), 4000);
+      return;
+    }
+    const currentQueue = getOfflinePendingFarms();
+    if (currentQueue.length === 0) {
+      setOfflineQueueCount(0);
+      return;
+    }
+
+    try {
+      const { syncedCount, conflictCount, conflicts } = await syncOfflinePendingFarms();
+      const remaining = getOfflinePendingFarms();
+      setOfflineQueueCount(remaining.length);
+
+      if (syncedCount > 0) {
+        setSyncNotification(`Sync complete: ${syncedCount} offline record${syncedCount > 1 ? 's' : ''} uploaded to database.`);
+        setTimeout(() => setSyncNotification(null), 5000);
+        // Refresh local table with Supabase records
+        syncWithSupabase();
+      }
+
+      if (conflictCount > 0) {
+        setSyncNotification(`Sync notice: ${conflictCount} record${conflictCount > 1 ? 's' : ''} had RSBSA conflict. Please review.`);
+        setTimeout(() => setSyncNotification(null), 6000);
+      }
+    } catch (err) {
+      console.warn('Sync offline queue notice:', err);
+    }
+  }, [syncWithSupabase]);
 
   // Handle App Settings updates from Realtime
   const handleSettingUpsert = useCallback((key: string, value: any) => {
@@ -825,6 +871,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw err;
       }
       console.warn('Supabase remote sync notice:', err?.message || err);
+    } finally {
+      setOfflineQueueCount(getOfflinePendingFarms().length);
     }
   };
 
@@ -839,13 +887,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await supabaseDb.upsertParcel(targetUpdated);
       } catch (err: any) {
         console.warn('Supabase parcel update notice:', err?.message || err);
+      } finally {
+        setOfflineQueueCount(getOfflinePendingFarms().length);
       }
     }
   };
 
   const deleteParcel = (tagNumber: string) => {
     setParcels((prev) => prev.filter((p) => p.tagNumber !== tagNumber));
-    supabaseDb.deleteParcel(tagNumber).catch((err) => {
+    supabaseDb.deleteParcel(tagNumber).then(() => {
+      setOfflineQueueCount(getOfflinePendingFarms().length);
+    }).catch((err) => {
       console.warn('Supabase parcel deletion notice:', err?.message || err);
     });
   };
@@ -1728,6 +1780,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         realtimeStatus,
         isRealtimeSyncing,
         syncWithSupabase,
+        offlineQueueCount,
+        isOnline,
+        syncOfflineQueue,
+        syncNotification,
+        setSyncNotification,
         // User Session & Auth Loading State
         isLoading: isAuthLoading,
         isAuthLoading
