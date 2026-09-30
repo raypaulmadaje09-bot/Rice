@@ -102,7 +102,6 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState<boolean>(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
-  const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   // Reset selected checkboxes on filter or search query change
@@ -545,77 +544,6 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
     setSelectedTags([]);
   };
 
-  const handleExportSelectedCSV = () => {
-    if (selectedParcels.length === 0) return;
-    const headers = [
-      'RSBSA NO.',
-      'FAMILY NAME',
-      'GIVEN NAME',
-      'MIDDLE NAME',
-      'BARANGAY',
-      'PUROK',
-      'RESIDENTIAL ADDRESS',
-      'BIRTHDAY',
-      'FARM LOCATION',
-      'GPS LATITUDE',
-      'GPS LONGITUDE',
-      'FARM AREA (HA)',
-      'COMMODITY PLANTED',
-      'SEED VARIETY',
-      'CROPPING SEASON',
-      'PLANTING DATE',
-      'HARVEST DATE',
-      'PRODUCTION (MT)',
-      'YIELD (MT/HA)',
-      'STATUS',
-      'LFT OFFICER'
-    ];
-
-    const rows = selectedParcels.map((p) => {
-      const rec = p.seasonalRecords?.find((r) => r.season === selectedSeason) || p.seasonalRecords?.[0];
-      const nameParts = getFarmerNameParts(p);
-      const bdayFormatted = formatBirthday(p.birthday);
-      const farmLoc = getFarmLocation(p);
-      const commodityPlanted = `${p.commodity || 'Rice'} / ${rec ? rec.seedVariety : p.breed}`;
-
-      return [
-        `"${p.swineNameOrId || 'NO RSBSA'}"`,
-        `"${nameParts.family}"`,
-        `"${nameParts.given}"`,
-        `"${nameParts.middle}"`,
-        `"${p.barangay}"`,
-        `"${p.purok || 'Purok 1'}"`,
-        `"Silago, Southern Leyte"`,
-        `"${bdayFormatted}"`,
-        `"${farmLoc}"`,
-        p.lat ? p.lat.toFixed(6) : '',
-        p.lng ? p.lng.toFixed(6) : '',
-        (p.weightKg || 0).toFixed(2),
-        `"${commodityPlanted}"`,
-        `"${rec ? rec.seedVariety : p.breed}"`,
-        `"${selectedSeason}"`,
-        `"${rec ? rec.plantingDate : p.plantingDate || '2026-07-20'}"`,
-        `"${rec ? (rec.actualHarvestDate || rec.estimatedHarvestDate) : '2026-11-15'}"`,
-        rec ? rec.actualProductionVolumeMt.toFixed(2) : ((p.weightKg || 1) * 4.8).toFixed(2),
-        rec ? rec.yieldMtPerHa.toFixed(2) : '4.80',
-        `"${rec ? rec.productionStatus : 'Standing Crop'}"`,
-        `"${rec ? rec.lftOfficerName : p.focalPerson}"`
-      ];
-    });
-
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `DA_LGU_Silago_Selected_${selectedParcels.length}_Rice_Records_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setActionNotice(`Exported ${selectedParcels.length} selected records to CSV successfully.`);
-    setTimeout(() => setActionNotice(null), 4000);
-  };
-
   const handleBulkDeleteSubmit = async () => {
     if (!permissions.canDeleteParcels) {
       setActionNotice('Restricted Permission: Only Central Admin can delete records.');
@@ -934,34 +862,12 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
-            {/* Export Selected CSV */}
-            <button
-              type="button"
-              onClick={handleExportSelectedCSV}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-              title="Export only checked records to CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export Selected ({selectedTags.length})</span>
-            </button>
-
-            {/* Print Selected RSBSA */}
-            <button
-              type="button"
-              onClick={() => setShowPrintModal(true)}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-              title="Print official report of selected farmers"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Selected ({selectedTags.length})</span>
-            </button>
-
             {/* Bulk Delete (Central Admin restricted) */}
             {permissions.canDeleteParcels ? (
               <button
                 type="button"
                 onClick={() => setShowBulkDeleteModal(true)}
-                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                 title="Delete selected records from database"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -971,7 +877,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
               <button
                 type="button"
                 disabled
-                className="px-3.5 py-2 bg-slate-700 text-slate-400 rounded-xl text-xs font-semibold opacity-60 cursor-not-allowed flex items-center gap-1.5"
+                className="px-4 py-2 bg-slate-700 text-slate-400 rounded-xl text-xs font-semibold opacity-60 cursor-not-allowed flex items-center gap-1.5"
                 title="Restricted: Only Central Admin can delete records"
               >
                 <Trash2 className="w-3.5 h-3.5 text-slate-500" />
@@ -1769,137 +1675,6 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                   </>
                 )}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Print Selected RSBSA Modal */}
-      {showPrintModal && selectedParcels.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 space-y-4 my-auto animate-in zoom-in-95 max-h-[92vh] flex flex-col">
-            {/* Modal Controls Bar */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200 shrink-0">
-              <div className="flex items-center gap-2">
-                <Printer className="w-5 h-5 text-indigo-700" />
-                <h3 className="text-sm font-bold text-slate-900">
-                  Print Selected RSBSA Farm Records ({selectedParcels.length} Farmers)
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print Report / Save PDF</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPrintModal(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Printable Document Surface */}
-            <div className="overflow-y-auto p-6 bg-white rounded-xl border border-slate-200 space-y-5 text-slate-900">
-              {/* Header with Seals */}
-              <div className="flex items-center justify-between border-b-2 border-slate-900/10 pb-4">
-                <DaLogo className="w-14 h-14 shrink-0" />
-                <div className="text-center space-y-0.5">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Republic of the Philippines &bull; Department of Agriculture
-                  </div>
-                  <div className="text-sm font-black text-slate-900 uppercase">
-                    MUNICIPALITY OF SILAGO, SOUTHERN LEYTE
-                  </div>
-                  <div className="text-xs font-bold text-emerald-800 uppercase tracking-tight">
-                    MUNICIPAL AGRICULTURE OFFICE &bull; RICE FARM REGISTRY
-                  </div>
-                  <div className="text-[10px] font-medium text-slate-600">
-                    Official RSBSA Farmer Registry &bull; Cropping Season: {selectedSeason}
-                  </div>
-                </div>
-                <SilagoSeal className="w-14 h-14 shrink-0" />
-              </div>
-
-              {/* Summary Stats */}
-              <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Selected Farmers</span>
-                  <span className="font-bold text-slate-900 text-sm">{selectedParcels.length}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Rice Area</span>
-                  <span className="font-mono font-bold text-emerald-800 text-sm">
-                    {selectedParcels.reduce((sum, p) => sum + (p.weightKg || 0), 0).toFixed(2)} ha
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Date Generated</span>
-                  <span className="font-medium text-slate-800">{new Date().toLocaleDateString()}</span>
-                </div>
-              </div>
-
-              {/* Selected Farmers Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-slate-300 bg-slate-100 text-[10px] font-bold uppercase text-slate-700">
-                      <th className="py-2 px-2 text-center">#</th>
-                      <th className="py-2 px-2.5">RSBSA NO.</th>
-                      <th className="py-2 px-3">FARMER NAME</th>
-                      <th className="py-2 px-2.5">BARANGAY</th>
-                      <th className="py-2 px-2">PUROK</th>
-                      <th className="py-2 px-2 text-right">AREA (HA)</th>
-                      <th className="py-2 px-2.5">VARIETY</th>
-                      <th className="py-2 px-2.5 text-center">GPS COORDINATES</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-slate-800">
-                    {selectedParcels.map((p, i) => (
-                      <tr key={p.tagNumber} className="hover:bg-slate-50">
-                        <td className="py-2 px-2 text-center font-mono text-[11px] text-slate-500">{i + 1}</td>
-                        <td className="py-2 px-2.5 font-mono font-bold text-blue-900 text-[11px] whitespace-nowrap">
-                          {p.swineNameOrId || 'NO RSBSA'}
-                        </td>
-                        <td className="py-2 px-3 font-semibold uppercase">{p.raiserName}</td>
-                        <td className="py-2 px-2.5">{p.barangay}</td>
-                        <td className="py-2 px-2 text-slate-600">{p.purok || '-'}</td>
-                        <td className="py-2 px-2 text-right font-mono font-bold">{(p.weightKg || 0).toFixed(2)}</td>
-                        <td className="py-2 px-2.5 text-slate-700">{p.breed}</td>
-                        <td className="py-2 px-2.5 text-center font-mono text-[10px] text-slate-600">
-                          {p.lat ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Signatures */}
-              <div className="pt-6 grid grid-cols-2 gap-8 text-center text-xs">
-                <div>
-                  <div className="h-10"></div>
-                  <div className="border-t border-slate-400 pt-1 font-bold text-slate-900 uppercase">
-                    {currentUser?.name || 'Assigned LFT Officer'}
-                  </div>
-                  <div className="text-[10px] text-slate-500">Local Farmer Technician / Field Officer</div>
-                </div>
-                <div>
-                  <div className="h-10"></div>
-                  <div className="border-t border-slate-400 pt-1 font-bold text-slate-900 uppercase">
-                    Engr. Arnaldo M. Valdez
-                  </div>
-                  <div className="text-[10px] text-slate-500">Municipal Agriculturist, DA-MAO Silago</div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
